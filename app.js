@@ -1,6 +1,6 @@
 let score = 0;
 let currentQuestionIndex = 0;
-let timeLeft = 15;
+let timeLeft = 30;
 let timerInterval;
 let questionsData = [];
 let totalQuestions = 0; // To store the number of questions user requested
