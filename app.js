@@ -103,7 +103,7 @@ function checkAnswer(selectedAnswer, correctAnswer) {
 }
 
 function startTimer() {
-    timeLeft = 15;
+    timeLeft = 30;
     document.getElementById('timer').textContent = `Time left: ${timeLeft} seconds`;
 
     timerInterval = setInterval(() => {
