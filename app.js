@@ -1,34 +1,37 @@
 let score = 0;
 let currentQuestionIndex = 0;
-let timeLeft = 30;
+let timeLeft = 15;
 let timerInterval;
 let questionsData = [];
+let totalQuestions = 0; // To store the number of questions user requested
 
 document.getElementById('triviaForm').addEventListener('submit', async function (e) {
     e.preventDefault();
 
-    score = 0;  // Reset score
+    score = 0;
     currentQuestionIndex = 0;
     updateScore();
-    document.getElementById('finalScore').textContent = '';  // Clear final score
-    document.getElementById('restartButton').style.display = 'none';  // Hide restart button
-    document.getElementById('skipButton').style.display = 'block';  // Show skip button
+    document.getElementById('finalScore').textContent = '';
+    document.getElementById('restartButton').style.display = 'none';
+    document.getElementById('skipButton').style.display = 'block';
 
     const category = document.getElementById('category').value;
     const difficulty = document.getElementById('difficulty').value;
-    const numQuestions = document.getElementById('numQuestions').value;
+    const numQuestions = parseInt(document.getElementById('numQuestions').value); // Number of questions
+    totalQuestions = numQuestions; // Store the total number of questions
 
-    // Trivia API URL with dynamic parameters
-    const apiUrl = `https://opentdb.com/api.php?amount=${numQuestions}&category=${category}&difficulty=${difficulty}&type=multiple`;
+    const apiUrl1 = `https://opentdb.com/api.php?amount=${numQuestions}&category=${category}&difficulty=${difficulty}&type=multiple`;
+    const apiUrl2 = `https://opentdb.com/api.php?amount=${numQuestions}&category=9&difficulty=medium&type=multiple`; // Another category for demonstration
 
-    try {
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-        questionsData = data.results;  // Store questions data globally
-        displayQuestion();
-    } catch (error) {
-        console.error('Error fetching trivia data:', error);
-    }
+    // Use Promise.all() to fetch two categories at once
+    Promise.all([fetch(apiUrl1), fetch(apiUrl2)])
+        .then(responses => Promise.all(responses.map(res => res.json()))) // Handle all responses
+        .then(dataArray => {
+            // Combine results from both API responses and limit the number of questions
+            questionsData = dataArray.flatMap(data => data.results).slice(0, totalQuestions);
+            displayQuestion();
+        })
+        .catch(error => console.error('Error fetching trivia data:', error));
 });
 
 document.getElementById('skipButton').addEventListener('click', function () {
@@ -39,44 +42,54 @@ document.getElementById('skipButton').addEventListener('click', function () {
 
 document.getElementById('restartButton').addEventListener('click', function () {
     document.getElementById('triviaForm').reset();
-    document.getElementById('questionsContainer').innerHTML = '';  // Clear questions
-    document.getElementById('score').textContent = 'Score: 0';  // Reset score display
-    document.getElementById('finalScore').textContent = '';  // Clear final score
+    document.getElementById('questionsContainer').innerHTML = '';
+    document.getElementById('score').textContent = 'Score: 0';
+    document.getElementById('finalScore').textContent = '';
     score = 0;
-    document.getElementById('restartButton').style.display = 'none';  // Hide restart button
-    document.getElementById('skipButton').style.display = 'none';  // Hide skip button
+    document.getElementById('restartButton').style.display = 'none';
+    document.getElementById('skipButton').style.display = 'none';
 });
 
+// Add the HTML entity decoding function here
+function decodeHtmlEntities(text) {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    return textarea.value;
+}
+
+// Replace the old displayQuestion function with this updated one
 function displayQuestion() {
     const container = document.getElementById('questionsContainer');
-    container.innerHTML = '';  // Clear previous question
+    container.innerHTML = '';
 
-    if (currentQuestionIndex >= questionsData.length) {
-        displayFinalScore();
+    // Check if we have reached the end of the questions
+    if (currentQuestionIndex >= totalQuestions) {
+        calculateFinalScoreWithWorker();
         return;
     }
 
     const questionObj = questionsData[currentQuestionIndex];
     const questionElement = document.createElement('div');
     questionElement.classList.add('question');
-    questionElement.innerHTML = `<h3>${currentQuestionIndex + 1}. ${questionObj.question}</h3>`;
+    // Decode the question text before displaying it
+    questionElement.innerHTML = `<h3>${currentQuestionIndex + 1}. ${decodeHtmlEntities(questionObj.question)}</h3>`;
 
-    // Create a list of answers (shuffling correct and incorrect answers)
     const answers = [...questionObj.incorrect_answers, questionObj.correct_answer];
     shuffleArray(answers).forEach(answer => {
         const answerButton = document.createElement('button');
-        answerButton.textContent = answer;
+        // Decode the answer text before displaying it
+        answerButton.textContent = decodeHtmlEntities(answer);
         answerButton.addEventListener('click', () => checkAnswer(answer, questionObj.correct_answer));
         questionElement.appendChild(answerButton);
     });
 
     container.appendChild(questionElement);
 
-    startTimer();  // Start timer for this question
+    startTimer();
 }
 
 function checkAnswer(selectedAnswer, correctAnswer) {
-    clearInterval(timerInterval);  // Stop the timer when an answer is selected
+    clearInterval(timerInterval);
     if (selectedAnswer === correctAnswer) {
         alert('Correct!');
         score++;
@@ -86,11 +99,11 @@ function checkAnswer(selectedAnswer, correctAnswer) {
 
     currentQuestionIndex++;
     updateScore();
-    displayQuestion();  // Display next question
+    displayQuestion();
 }
 
 function startTimer() {
-    timeLeft = 30;
+    timeLeft = 15;
     document.getElementById('timer').textContent = `Time left: ${timeLeft} seconds`;
 
     timerInterval = setInterval(() => {
@@ -101,7 +114,7 @@ function startTimer() {
             clearInterval(timerInterval);
             alert('Time up!');
             currentQuestionIndex++;
-            displayQuestion();  // Move to the next question
+            displayQuestion();
         }
     }, 1000);
 }
@@ -110,14 +123,29 @@ function updateScore() {
     document.getElementById('score').textContent = `Score: ${score}`;
 }
 
-function displayFinalScore() {
-    document.getElementById('questionsContainer').innerHTML = '';  // Clear questions
-    document.getElementById('finalScore').textContent = `Quiz Finished! Your final score is: ${score}`;
-    document.getElementById('restartButton').style.display = 'block';  // Show restart button
-    document.getElementById('skipButton').style.display = 'none';  // Hide skip button
+function calculateFinalScoreWithWorker() {
+    // Web Worker to calculate final score
+    if (typeof(Worker) !== "undefined") {
+        const worker = new Worker("worker.js");
+        worker.postMessage(score);
+        worker.onmessage = function(event) {
+            const correctAnswers = event.data;
+            const totalQuestions = questionsData.length; // Get total number of questions
+            document.getElementById('finalScore').textContent = `Quiz Finished! You got ${correctAnswers} out of ${totalQuestions} correct!`;
+            document.getElementById('restartButton').style.display = 'block';
+            document.getElementById('skipButton').style.display = 'none';
+        };
+    } else {
+        // Fallback if Web Workers are not supported
+        alert('Web Workers are not supported by your browser.');
+        document.getElementById('finalScore').textContent = `Quiz Finished! You got ${score} out of ${totalQuestions} correct!`;
+        document.getElementById('restartButton').style.display = 'block';
+        document.getElementById('skipButton').style.display = 'none';
+    }
 }
 
-// Helper function to shuffle array (Fisher-Yates Shuffle)
+
+// Helper function to shuffle array
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
